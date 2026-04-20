@@ -64,6 +64,7 @@ FetchContent_MakeAvailable(
 add_executable(llm-proxy
     src/main.cpp
     src/utils/logger.cpp
+    src/config/config_manager.cpp
 )
 
 # Add include directory

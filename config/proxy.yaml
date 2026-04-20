@@ -1,0 +1,13 @@
+server:
+  port: 8080
+  listen_address: "0.0.0.0"
+backend:
+  url: "http://localhost:11434"
+  timeout_ms: 30000
+  max_retries: 2
+cache:
+  enabled: true
+  max_size_mb: 256
+  ttl_seconds: 3600
+logging:
+  level: "info"
