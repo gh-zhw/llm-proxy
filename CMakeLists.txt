@@ -65,6 +65,7 @@ add_executable(llm-proxy
     src/main.cpp
     src/utils/logger.cpp
     src/config/config_manager.cpp
+    src/server/http_server.cpp
 )
 
 # Add include directory
