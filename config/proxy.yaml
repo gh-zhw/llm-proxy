@@ -10,4 +10,4 @@ cache:
   max_size_mb: 256
   ttl_seconds: 3600
 logging:
-  level: "info"
+  level: "debug"
