@@ -12,6 +12,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Set output directory for executables
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
+set(CMAKE_BUILD_TYPE Debug)
+
 include(FetchContent)
 
 # Declare dependencies (using stable versions)
@@ -67,6 +69,7 @@ add_executable(llm-proxy
     src/config/config_manager.cpp
     src/server/http_server.cpp
     src/parser/request_parser.cpp
+    src/forwarder/forwarder.cpp
 )
 
 # Add include directory

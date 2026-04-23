@@ -3,6 +3,7 @@
 #include "server/http_server.h"
 #include "utils/logger.h"
 #include "parser/request_parser.h"
+#include "forwarder/forwarder.h"
 
 
 namespace llmproxy
@@ -43,7 +44,7 @@ void HttpServer::setupRoutes() {
     });
 
     // Chat completions endpoint
-    m_server->Post("/v1/chat/completions", [](const httplib::Request& req, httplib::Response& resp) {
+    m_server->Post("/v1/chat/completions", [this](const httplib::Request& req, httplib::Response& resp) {
         // 1. Check Content-Length (max 1MB)
         auto content_length_str = req.get_header_value("Content-Length");
         if (!content_length_str.empty()) {
@@ -67,30 +68,29 @@ void HttpServer::setupRoutes() {
         std::string cache_key = RequestParser::generateCacheKey(chat_req);
         Logger::debug("Cache key: " + cache_key);
 
-        // 4. Placeholder response (will be replaced by forwarder/cache)
-        nlohmann::json placeholder = {
-            {"id", "test-response"},
-            {"object", "chat.completion"},
-            {"created", 1234567890},
-            {"model", chat_req.model},
-            {"choices", {
-                {
-                    {"index", 0},
-                    {"message", {
-                        {"role", "assistant"},
-                        {"content", "This is a placeholder response. The request was valid."}
-                    }},
-                    {"finish_reason", "stop"}
+        // 4. Forward to backend
+        Forwarder forwarder(m_backendConfig);
+        std::string backend_response;
+        if (forwarder.forward(chat_req, req.body, backend_response, error_msg)) {
+            // Success: pass backend response as-is
+            resp.set_content(backend_response, "application/json");
+            resp.status = 200;
+        } else {
+            // Forwarding failed: determine appropriate HTTP status
+            if (error_msg.find("timeout") != std::string::npos ||
+                error_msg.find("All retries exhausted") != std::string::npos) {
+                sendError(resp, "Backend timeout", 504);
+            } else {
+                // For 4xx or other errors, try to extract status from error_msg
+                 if (error_msg.find("400") != std::string::npos) {
+                    sendError(resp, "Backend bad request", 400);
+                } else if (error_msg.find("404") != std::string::npos) {
+                    sendError(resp, "Backend not found", 404);
+                } else {
+                    sendError(resp, "Bad gateway: " + error_msg, 502);
                 }
-            }},
-            {"usage", {
-                {"prompt_tokens", 0},
-                {"completion_tokens", 0},
-                {"total_tokens", 0}
-            }}
-        };
-        resp.set_content(placeholder.dump(), "application/json");
-        resp.status = 200;
+            }
+        }
     });
 
     // Root endpoint
