@@ -11,6 +11,7 @@ namespace config {
 struct ServerConfig {
     int port = 8080;
     std::string listen_address = "0.0.0.0";
+    int stats_logging_seconds = 60;
 };
 
 struct BackendConfig {

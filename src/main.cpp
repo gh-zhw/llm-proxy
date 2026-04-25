@@ -62,6 +62,7 @@ int main(int argc, char* argv[])
     llmproxy::HttpServer server;
     server.setBackendConfig(config.backend);
     server.setCache(cache);
+    server.setStatsLogInterval(config.server.stats_logging_seconds);
 
     if (!server.start(config.server.listen_address, config.server.port)) {
         llmproxy::Logger::error("Failed to start Http server, exiting.");

@@ -27,6 +27,8 @@ ProxyConfig loadConfig(const std::string& filepath) {
                 config.server.port = sv["port"].as<int>();
             if (sv["listen_address"] && sv["listen_address"].IsScalar())
                 config.server.listen_address = sv["listen_address"].as<std::string>();
+            if (sv["stats_logging_seconds"] && sv["stats_logging_seconds"].IsScalar())
+                config.server.stats_logging_seconds = sv["stats_logging_seconds"].as<int>();
         }
 
         // Backend

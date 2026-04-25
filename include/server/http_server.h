@@ -35,16 +35,27 @@ public:
 
     void setCache(std::shared_ptr<Cache> cache) { m_cache = cache; }
 
+    // Sets the interval (seconds) for periodic stats logging; <= 0 disables it.
+    void setStatsLogInterval(int seconds) { m_statsLoggingSeconds = seconds; }
+
     bool isRunning() const { return m_running; }
 
 private:
     std::unique_ptr<httplib::Server> m_server;
-    config::BackendConfig m_backendConfig;
-    std::shared_ptr<Cache> m_cache;
-    std::atomic<bool> m_running;
-    std::thread m_serverThread;
     std::string m_host;
     int m_port;
+    std::atomic<bool> m_running;
+    std::thread m_serverThread;
+
+    std::thread m_statsThread;           // Thread for periodic statistics output
+    std::atomic<bool> m_stopStats;       // Flag to stop statistics thread
+    int m_statsLoggingSeconds;
+
+    config::BackendConfig m_backendConfig;
+    std::shared_ptr<Cache> m_cache;
+
+    // Statistics reporter thread function
+    void statsReporter();
 };
 
 }

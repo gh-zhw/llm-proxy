@@ -25,8 +25,10 @@ static void sendError(httplib::Response& resp, const std::string& message, int s
 HttpServer::HttpServer() 
     : m_server(std::make_unique<httplib::Server>()),
       m_running(false),
+      m_stopStats(false),
       m_host("0.0.0.0"),
-      m_port(8080) {}
+      m_port(8080),
+      m_statsLoggingSeconds(0) {}
 
 HttpServer::~HttpServer() {
     if (m_running) { stop(); }
@@ -72,10 +74,12 @@ void HttpServer::setupRoutes() {
             std::string cached_response;
             if (m_cache->get(cache_key, cached_response)) {
                 Logger::info("Cache HIT for key: " + cache_key);
+                resp.set_header("X-Cache-Status", "HIT");
                 resp.set_content(cached_response, "application/json");
                 resp.status = 200;
                 return;
             }
+            resp.set_header("X-Cache-Status", "MISS");
             Logger::debug("Cache MISS for key: " + cache_key);
         }
 
@@ -117,6 +121,24 @@ void HttpServer::setupRoutes() {
     Logger::debug("HTTP routes registered");
 }
 
+void HttpServer::statsReporter() {
+    const auto report_interval = std::chrono::seconds(m_statsLoggingSeconds);
+    while (!m_stopStats) {
+        std::this_thread::sleep_for(report_interval);
+        if (m_stopStats) break;
+
+        // Cache stats
+        if (m_cache) {
+            double hit_rate = m_cache->getHitRate();
+            Logger::info("Cache hit rate: " + std::to_string(hit_rate * 100) + "% ("
+                         + std::to_string(m_cache->size()) + " entries)");
+        }
+
+        // More server stas...
+
+    }
+}
+
 bool HttpServer::start(const std::string& host, int port) {
     if (m_running) {
         Logger::warn("Server already running");
@@ -126,6 +148,12 @@ bool HttpServer::start(const std::string& host, int port) {
     m_host = host;
     m_port = port;
     setupRoutes();
+
+    if (m_statsLoggingSeconds > 0) {
+        // Start the statistics reporter thread
+        m_stopStats = false;
+        m_statsThread = std::thread(&HttpServer::statsReporter, this);
+    }
 
     m_running = true;
     m_serverThread = std::thread([this]() {
@@ -143,10 +171,16 @@ void HttpServer::stop() {
     if (!m_running) return;
 
     Logger::info("Shutting down HTTP server...");
-    m_server->stop();  //This will cause listen() to return
+    m_server->stop();  // Causes listen() to return
     if (m_serverThread.joinable()) {
         m_serverThread.join();
     }
+
+    m_stopStats = true;
+    if (m_statsThread.joinable()) {
+        m_statsThread.join();
+    }
+
     m_running = false;
     Logger::info("HTTP server stopped");
 }
