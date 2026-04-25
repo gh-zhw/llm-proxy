@@ -120,7 +120,7 @@ void Cache::clear() {
 double Cache::getHitRate() const {
     uint64_t lookups = m_lookups.load();
     if (lookups == 0) return 0.0;
-    return static_cast<double>(m_hits.load() / lookups);
+    return static_cast<double>(m_hits.load()) / lookups;
 }
 
 size_t Cache::size() const {
