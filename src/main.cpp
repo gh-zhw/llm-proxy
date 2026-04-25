@@ -2,10 +2,12 @@
 #include <atomic>
 #include <thread>
 #include <chrono>
+#include <spdlog/spdlog.h>
 #include "utils/logger.h"
 #include "config/config.h"
 #include "server/http_server.h"
-#include <spdlog/spdlog.h>
+#include "cache/cache.h"
+
 
 // Global flag for signal handling
 static std::atomic<bool> g_shutdown_requested(false);
@@ -43,6 +45,12 @@ int main(int argc, char* argv[])
     else if (config.logging.level == "error") spdlog_level = spdlog::level::err;
     llmproxy::Logger::setLevel(spdlog_level);
 
+    // Create cache instance (convert max_size_mb to approximate max_entries)
+    // Assume average response size = 4KB (4096 bytes)
+    size_t avg_response_bytes = 4096;
+    size_t max_entries = (config.cache.max_size_mb * 1024 * 1024) / avg_response_bytes;
+    auto cache = std::make_shared<llmproxy::Cache>(max_entries, config.cache.ttl_seconds);
+
     // Print configuration summary
     llmproxy::Logger::info("Configuration loaded:");
     llmproxy::Logger::info("  Server: " + config.server.listen_address + ":" + std::to_string(config.server.port));
@@ -53,6 +61,8 @@ int main(int argc, char* argv[])
     // Create and start HTTP server
     llmproxy::HttpServer server;
     server.setBackendConfig(config.backend);
+    server.setCache(cache);
+
     if (!server.start(config.server.listen_address, config.server.port)) {
         llmproxy::Logger::error("Failed to start Http server, exiting.");
         return 1;

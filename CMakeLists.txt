@@ -70,6 +70,7 @@ add_executable(llm-proxy
     src/server/http_server.cpp
     src/parser/request_parser.cpp
     src/forwarder/forwarder.cpp
+    src/cache/cache.cpp
 )
 
 # Add include directory

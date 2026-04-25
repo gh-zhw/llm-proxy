@@ -68,11 +68,26 @@ void HttpServer::setupRoutes() {
         std::string cache_key = RequestParser::generateCacheKey(chat_req);
         Logger::debug("Cache key: " + cache_key);
 
+        if (m_cache) {
+            std::string cached_response;
+            if (m_cache->get(cache_key, cached_response)) {
+                Logger::info("Cache HIT for key: " + cache_key);
+                resp.set_content(cached_response, "application/json");
+                resp.status = 200;
+                return;
+            }
+            Logger::debug("Cache MISS for key: " + cache_key);
+        }
+
         // 4. Forward to backend
         Forwarder forwarder(m_backendConfig);
         std::string backend_response;
         if (forwarder.forward(chat_req, req.body, backend_response, error_msg)) {
-            // Success: pass backend response as-is
+            // Cache successful response
+            if (m_cache) {
+                m_cache->put(cache_key, backend_response);
+            }
+            // Pass backend response as-is
             resp.set_content(backend_response, "application/json");
             resp.status = 200;
         } else {

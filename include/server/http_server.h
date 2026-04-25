@@ -5,6 +5,7 @@
 #include <memory>
 #include <thread>
 #include "config/config.h"
+#include "cache/cache.h"
 
 // Forward declaration
 namespace httplib
@@ -32,10 +33,14 @@ public:
 
     void setBackendConfig(const config::BackendConfig& cfg) { m_backendConfig = cfg; }
 
+    void setCache(std::shared_ptr<Cache> cache) { m_cache = cache; }
+
     bool isRunning() const { return m_running; }
+
 private:
     std::unique_ptr<httplib::Server> m_server;
     config::BackendConfig m_backendConfig;
+    std::shared_ptr<Cache> m_cache;
     std::atomic<bool> m_running;
     std::thread m_serverThread;
     std::string m_host;
