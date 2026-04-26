@@ -4,6 +4,7 @@
 #include "utils/logger.h"
 #include "parser/request_parser.h"
 #include "forwarder/forwarder.h"
+#include "metrics/metrics.h"
 
 
 namespace llmproxy
@@ -35,6 +36,14 @@ HttpServer::~HttpServer() {
 }
 
 void HttpServer::setupRoutes() {
+    // Root endpoint
+    m_server->Get("/", [](const httplib::Request&, httplib::Response& resp) {
+        resp.set_content("llm-proxy is running", "text/plain");
+        resp.status = 200;
+    });
+
+    Logger::debug("HTTP routes registered");
+
     // Health check endpoint
     m_server->Get("/health", [](const httplib::Request&, httplib::Response& resp) {
         nlohmann::json jsonResp = {
@@ -45,8 +54,42 @@ void HttpServer::setupRoutes() {
         resp.status = 200;
     });
 
+    // Metrics endpoint
+    m_server->Get("/metrics", [](const httplib::Request&, httplib::Response& res) {
+        auto snap = Metrics::instance().snapshot();
+        std::string metrics_text = 
+            "# HELP llm_proxy_total_requests Total number of requests\n"
+            "# TYPE llm_proxy_total_requests counter\n"
+            "llm_proxy_total_requests " + std::to_string(snap.total_requests) + "\n"
+            "# HELP llm_proxy_cache_hits Total cache hits\n"
+            "# TYPE llm_proxy_cache_hits counter\n"
+            "llm_proxy_cache_hits " + std::to_string(snap.cache_hits) + "\n"
+            "# HELP llm_proxy_cache_misses Total cache misses\n"
+            "# TYPE llm_proxy_cache_misses counter\n"
+            "llm_proxy_cache_misses " + std::to_string(snap.cache_misses) + "\n"
+            "# HELP llm_proxy_forward_success Successful forwards\n"
+            "# TYPE llm_proxy_forward_success counter\n"
+            "llm_proxy_forward_success " + std::to_string(snap.forward_success) + "\n"
+            "# HELP llm_proxy_forward_errors Failed forwards\n"
+            "# TYPE llm_proxy_forward_errors counter\n"
+            "llm_proxy_forward_errors " + std::to_string(snap.forward_errors) + "\n"
+            "# HELP llm_proxy_avg_latency_ms Average latency in milliseconds\n"
+            "# TYPE llm_proxy_avg_latency_ms gauge\n"
+            "llm_proxy_avg_latency_ms " + std::to_string(snap.avg_latency_ms) + "\n";
+        res.set_content(metrics_text, "text/plain; version=0.0.4");
+    });
+
     // Chat completions endpoint
     m_server->Post("/v1/chat/completions", [this](const httplib::Request& req, httplib::Response& resp) {
+        auto start_time = std::chrono::steady_clock::now();
+
+        // Helper to record metrics before returning
+        auto record_metrics = [&](bool cache_hit, bool forward_success) {
+            auto end_time = std::chrono::steady_clock::now();
+            auto latency_us = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
+            Metrics::instance().recordRequest(cache_hit, latency_us, forward_success);
+        };
+
         // 1. Check Content-Length (max 1MB)
         auto content_length_str = req.get_header_value("Content-Length");
         if (!content_length_str.empty()) {
@@ -54,6 +97,7 @@ void HttpServer::setupRoutes() {
             const size_t MAX_BODY_SIZE = 1024 * 1024;  // 1MB
             if (content_length > MAX_BODY_SIZE) {
                 sendError(resp, "Request body too large (max 1MB)", 413);
+                record_metrics(false, false);
                 return;
             }
         }
@@ -63,6 +107,7 @@ void HttpServer::setupRoutes() {
         std::string error_msg;
         if (!RequestParser::parse(req.body, chat_req, error_msg)) {
             sendError(resp, error_msg, 400);
+            record_metrics(false, false);
             return;
         }
 
@@ -77,6 +122,7 @@ void HttpServer::setupRoutes() {
                 resp.set_header("X-Cache-Status", "HIT");
                 resp.set_content(cached_response, "application/json");
                 resp.status = 200;
+                record_metrics(true, true);
                 return;
             }
             resp.set_header("X-Cache-Status", "MISS");
@@ -94,6 +140,7 @@ void HttpServer::setupRoutes() {
             // Pass backend response as-is
             resp.set_content(backend_response, "application/json");
             resp.status = 200;
+            record_metrics(false, true);
         } else {
             // Forwarding failed: determine appropriate HTTP status
             if (error_msg.find("timeout") != std::string::npos ||
@@ -109,33 +156,35 @@ void HttpServer::setupRoutes() {
                     sendError(resp, "Bad gateway: " + error_msg, 502);
                 }
             }
+            record_metrics(false, false);
         }
     });
-
-    // Root endpoint
-    m_server->Get("/", [](const httplib::Request&, httplib::Response& resp) {
-        resp.set_content("llm-proxy is running", "text/plain");
-        resp.status = 200;
-    });
-
-    Logger::debug("HTTP routes registered");
 }
 
 void HttpServer::statsReporter() {
     const auto report_interval = std::chrono::seconds(m_statsLoggingSeconds);
+    auto last_snapshot = Metrics::instance().snapshot();
+    auto last_time = std::chrono::steady_clock::now();
+
     while (!m_stopStats) {
         std::this_thread::sleep_for(report_interval);
         if (m_stopStats) break;
 
-        // Cache stats
-        if (m_cache) {
-            double hit_rate = m_cache->getHitRate();
-            Logger::info("Cache hit rate: " + std::to_string(hit_rate * 100) + "% ("
-                         + std::to_string(m_cache->size()) + " entries)");
-        }
+        auto now = std::chrono::steady_clock::now();
+        auto cur_snapshot = Metrics::instance().snapshot();
 
-        // More server stas...
+        double elapsed_sec = std::chrono::duration<double>(now - last_time).count();
+        uint64_t delta_requests = cur_snapshot.total_requests - last_snapshot.total_requests;
+        double qps = delta_requests / elapsed_sec;
 
+        Logger::info("Metrics: QPS=" + std::to_string(qps) +
+                     ", avg_latency=" + std::to_string(cur_snapshot.avg_latency_ms) + "ms" +
+                     ", hit_rate=" + std::to_string(cur_snapshot.hit_rate) +
+                     ", error_rate=" + std::to_string(cur_snapshot.error_rate) +
+                     ", total_requests=" + std::to_string(cur_snapshot.total_requests));
+
+        last_snapshot = cur_snapshot;
+        last_time = now;
     }
 }
 
