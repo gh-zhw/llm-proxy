@@ -31,12 +31,7 @@ public:
     // Block until server thread exits
     void stop();
 
-    void setBackendConfig(const config::BackendConfig& cfg) { m_backendConfig = cfg; }
-
     void setCache(std::shared_ptr<Cache> cache) { m_cache = cache; }
-
-    // Sets the interval (seconds) for periodic stats logging; <= 0 disables it.
-    void setStatsLogInterval(int seconds) { m_statsLoggingSeconds = seconds; }
 
     bool isRunning() const { return m_running; }
 
@@ -49,9 +44,7 @@ private:
 
     std::thread m_statsThread;           // Thread for periodic statistics output
     std::atomic<bool> m_stopStats;       // Flag to stop statistics thread
-    int m_statsLoggingSeconds;
 
-    config::BackendConfig m_backendConfig;
     std::shared_ptr<Cache> m_cache;
 
     // Statistics reporter thread function

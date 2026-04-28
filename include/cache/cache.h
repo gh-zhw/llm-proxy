@@ -30,6 +30,11 @@ public:
     // Get current hit rate (hits / lookups)
     double getHitRate() const;
 
+    // Resizes cache to max entries (actual value = max(max_entries, 1))
+    void resize(size_t max_entries);
+
+    void setTtl(size_t ttl_seconds);
+
     // Get current size
     size_t size() const;
 

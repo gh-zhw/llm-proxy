@@ -1,8 +1,11 @@
 #include <iostream>
 #include <string>
 #include <cstring>
-#include "config/config.h"
+#include <optional>
 #include <yaml-cpp/yaml.h>
+#include "config/config.h"
+#include "config/config_manager.h"
+#include "utils/logger.h"
 
 
 namespace llmproxy
@@ -72,16 +75,90 @@ ProxyConfig loadConfig(const std::string& filepath) {
     return config;
 }
 
-void overrideFromArgs(int argc, char* argv[], ProxyConfig& config, std::string& configPath) {
+
+ConfigManager& ConfigManager::instance() {
+    static ConfigManager manager;
+    return manager;
+}
+
+void ConfigManager::init(const std::string& config_path) {
+    m_configPath = config_path;
+    try {
+        auto config = std::make_shared<const ProxyConfig>(loadConfig(m_configPath));
+        m_config.store(config, std::memory_order_release);
+    } catch(...) {
+        // If loading fails, use defaults
+        auto config = std::make_shared<const ProxyConfig>(getDefaultConfig());
+        m_config.store(config, std::memory_order_release);
+        std::cerr << "[ERROR] Failed to load config file: " << m_configPath 
+                  << ". Using defaults." << std::endl;
+    }
+}
+
+std::shared_ptr<const ProxyConfig> ConfigManager::get() const {
+    return m_config.load(std::memory_order_acquire);
+}
+
+bool ConfigManager::reload() {
+    Logger::info("Reloading config from " + m_configPath + "...");
+    ProxyConfig config;
+    try {
+        config = loadConfig(m_configPath);
+    } catch (...) {
+        Logger::error("Config reload failed, keeping old config");
+        return false;
+    }
+    auto sptr = std::make_shared<const ProxyConfig>(std::move(config));
+    m_config.store(sptr, std::memory_order_release);
+    Logger::info("Config reloaded successfully");
+    return true;
+}
+
+void ConfigManager::setConfigPath(const std::string& path) {
+    m_configPath = path;
+}
+
+void ConfigManager::overrideFromArgs(int argc, char* argv[]) {
+    std::string configPath;
+    std::optional<int> port;
+    std::string level;
     for (int i = 0; i < argc; ++i) {
         if (strcmp(argv[i], "--config") == 0 && i + 1 < argc) {
             configPath = argv[++i];
         } else if (strcmp(argv[i], "--port") == 0 && i + 1 < argc) {
-            config.server.port = std::stoi(argv[++i]);
+            try {
+                port = std::stoi(argv[++i]);
+            } catch (...) {
+                std::cerr << "Invalid port number, ignored\n";
+            }
         } else if (strcmp(argv[i], "--log-level") == 0 && i + 1 < argc) {
-            config.logging.level = argv[++i];
+            level = argv[++i];
         }
     }
+
+    auto sptr = m_config.load(std::memory_order_acquire);
+    ProxyConfig config = sptr ? *sptr : getDefaultConfig();
+    if (!configPath.empty()) {
+        try {
+            config = loadConfig(configPath);
+        } catch (...) {
+            std::cerr << "[ERROR] Failed to load config file: " << configPath 
+                      << ". Using fallback configuration." << std::endl;
+        }
+    }
+    if (port.has_value()) {
+        int p = port.value();
+        if (p >= 0 && p <= 65535) {
+            config.server.port = p;
+        } else {
+            std::cerr << "Invalid port " << p << ", must be 0-65535. Ignored." << std::endl;
+        }
+    }
+    if (!level.empty()) {
+        config.logging.level = level;
+    }
+    sptr = std::make_shared<const ProxyConfig>(std::move(config));
+    m_config.store(sptr, std::memory_order_release);
 }
 
 }  // namespace config

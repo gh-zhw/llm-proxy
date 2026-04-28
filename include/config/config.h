@@ -41,9 +41,6 @@ struct ProxyConfig {
 // Returns config with values from: command line > file > default.
 ProxyConfig loadConfig(const std::string& filepath);
 
-// Parse command line arguments and override config accordingly.
-// Supported: --config <path>, --port <int>, --log-level <string>
-void overrideFromArgs(int argc, char* arg[], ProxyConfig& config, std::string& filepath);
 
 }  // namespace config
 

@@ -5,6 +5,7 @@
 #include "parser/request_parser.h"
 #include "forwarder/forwarder.h"
 #include "metrics/metrics.h"
+#include "config/config_manager.h"
 
 
 namespace llmproxy
@@ -28,8 +29,7 @@ HttpServer::HttpServer()
       m_running(false),
       m_stopStats(false),
       m_host("0.0.0.0"),
-      m_port(8080),
-      m_statsLoggingSeconds(0) {}
+      m_port(8080) {}
 
 HttpServer::~HttpServer() {
     if (m_running) { stop(); }
@@ -130,7 +130,8 @@ void HttpServer::setupRoutes() {
         }
 
         // 4. Forward to backend
-        Forwarder forwarder(m_backendConfig);
+        auto cfg = config::ConfigManager::instance().get();
+        Forwarder forwarder(cfg->backend);
         std::string backend_response;
         if (forwarder.forward(chat_req, req.body, backend_response, error_msg)) {
             // Cache successful response
@@ -162,11 +163,15 @@ void HttpServer::setupRoutes() {
 }
 
 void HttpServer::statsReporter() {
-    const auto report_interval = std::chrono::seconds(m_statsLoggingSeconds);
     auto last_snapshot = Metrics::instance().snapshot();
     auto last_time = std::chrono::steady_clock::now();
 
     while (!m_stopStats) {
+        auto cfg = config::ConfigManager::instance().get();
+        int interval_sec = cfg->server.stats_logging_seconds;
+        if (interval_sec <= 0) interval_sec = 60;  // fallback
+        auto report_interval = std::chrono::seconds(interval_sec);
+
         std::this_thread::sleep_for(report_interval);
         if (m_stopStats) break;
 
@@ -198,7 +203,8 @@ bool HttpServer::start(const std::string& host, int port) {
     m_port = port;
     setupRoutes();
 
-    if (m_statsLoggingSeconds > 0) {
+    auto cfg = config::ConfigManager::instance().get();
+    if (cfg->server.stats_logging_seconds > 0) {
         // Start the statistics reporter thread
         m_stopStats = false;
         m_statsThread = std::thread(&HttpServer::statsReporter, this);

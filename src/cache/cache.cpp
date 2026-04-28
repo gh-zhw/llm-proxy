@@ -123,6 +123,21 @@ double Cache::getHitRate() const {
     return static_cast<double>(m_hits.load()) / lookups;
 }
 
+void Cache::resize(size_t max_entries) {
+    std::unique_lock<std::shared_mutex> lock(m_mutex);
+    m_max_entries = max_entries > 0 ? max_entries : 1;
+    while (m_map.size() > m_max_entries) {
+        evictOne();
+    }
+    Logger::debug("Cache resized to max_entries=" + std::to_string(max_entries));
+}
+
+void Cache::setTtl(size_t ttl_seconds) {
+    std::unique_lock<std::shared_mutex> lock(m_mutex);
+    m_ttl_seconds = ttl_seconds;
+    Logger::debug("Cache TTL updated to " + std::to_string(ttl_seconds) + " seconds");
+}
+
 size_t Cache::size() const {
     std::shared_lock<std::shared_mutex> lock(m_mutex);
     return m_map.size();
