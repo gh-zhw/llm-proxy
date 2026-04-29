@@ -22,7 +22,7 @@ public:
     bool get(const std::string& key, std::string& out_value);
 
     // Insert or update a cache entry.
-    void put(const std::string& key, std::string& value);
+    void put(const std::string& key, const std::string& value);
 
     // Clear all entries
     void clear();

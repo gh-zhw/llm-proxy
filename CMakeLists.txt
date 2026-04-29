@@ -12,7 +12,33 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Set output directory for executables
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
-set(CMAKE_BUILD_TYPE Debug)
+if(NOT CMAKE_BUILD_TYEP)
+    set(CMAKE_BUILD_TYPE "Debug")
+endif()
+
+# ------------------------------------------------------------------------------
+# Sanitizer options (AddressSanitizer, UndefinedBehaviorSanitizer)
+# Usage: cmake -DENABLE_ASAN=ON -DENABLE_UBSAN=ON ..
+# ------------------------------------------------------------------------------
+option(ENABLE_ASAN  "Enable AddressSanitizer (memory error detection)"  OFF)
+option(ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer (UB detection)"  OFF)
+
+if(ENABLE_ASAN OR ENABLE_UBSAN)
+    # Always add debug symbols and frame pointer for meaningful stack traces
+    add_compile_options(-g -fno-omit-frame-pointer)
+
+    if(ENABLE_ASAN)
+        add_compile_options(-fsanitize=address)
+        add_link_options(-fsanitize=address)
+        message(STATUS "AddressSanitizer enabled")
+    endif()
+
+    if(ENABLE_UBSAN)
+        add_compile_options(-fsanitize=undefined)
+        add_link_options(-fsanitize=undefined)
+        message(STATUS "UndefinedBehaviorSanitizer enabled")
+    endif()
+endif()
 
 include(FetchContent)
 
@@ -62,6 +88,11 @@ FetchContent_MakeAvailable(
     googletest
 )
 
+# Add tests subdirectory if BUILD_TESTING is ON
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()
+
 # Add the main executable
 add_executable(llm-proxy
     src/main.cpp
@@ -89,3 +120,5 @@ target_link_libraries(llm-proxy
 
 message(STATUS "C++ Standard: ${CMAKE_CXX_STANDARD}")
 message(STATUS "Binary output directory: ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
+message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
+

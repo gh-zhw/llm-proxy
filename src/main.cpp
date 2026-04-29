@@ -64,12 +64,13 @@ int main(int argc, char* argv[])
 
     printConfigSummary(config);
 
-    // Create and start HTTP server
+    // Create HTTP server
     llmproxy::HttpServer server;
 
+    // Create cache instance if enabled
     std::shared_ptr<llmproxy::Cache> cache(nullptr);
     if (config->cache.enabled) {
-        // Create cache instance (convert max_size_mb to approximate max_entries)
+        // Convert max_size_mb to approximate max_entries
         // Assume average response size = 4KB (4096 bytes)
         size_t max_entries = (config->cache.max_size_mb * 1024 * 1024) / 4096;
         cache = std::make_shared<llmproxy::Cache>(max_entries, config->cache.ttl_seconds);

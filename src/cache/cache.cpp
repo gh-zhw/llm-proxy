@@ -35,7 +35,7 @@ void Cache::touch(const std::string& key) {
 void Cache::evictOne() {
     // Assumes write lock is held
     if (m_lru_list.empty()) return;
-    const std::string& oldest_key = m_lru_list.back();
+    std::string oldest_key = m_lru_list.back();
     m_map.erase(oldest_key);
     m_lru_list.pop_back();
     Logger::debug("Cache evicted key: " + oldest_key);
@@ -84,7 +84,7 @@ bool Cache::get(const std::string& key, std::string& out_value) {
     return true;
 }
 
-void Cache::put(const std::string& key, std::string& value) {
+void Cache::put(const std::string& key, const std::string& value) {
     std::unique_lock<std::shared_mutex> lock(m_mutex);
 
     // Check if key already exists
