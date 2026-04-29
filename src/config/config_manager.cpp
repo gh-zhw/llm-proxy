@@ -17,52 +17,53 @@ static ProxyConfig getDefaultConfig(){
     return ProxyConfig();
 }
 
+static void applyYamlOverrides(ProxyConfig& cfg, const std::string& filepath) {
+    YAML::Node root = YAML::LoadFile(filepath);
+    
+    // Server overrides
+    if (root["server"] && root["server"].IsMap()) {
+        auto sv = root["server"];
+        if (sv["port"] && sv["port"].IsScalar())
+            cfg.server.port = sv["port"].as<int>();
+        if (sv["listen_address"] && sv["listen_address"].IsScalar())
+            cfg.server.listen_address = sv["listen_address"].as<std::string>();
+    }
+    
+    // Backend overrides
+    if (root["backend"] && root["backend"].IsMap()) {
+        auto be = root["backend"];
+        if (be["url"] && be["url"].IsScalar())
+            cfg.backend.url = be["url"].as<std::string>();
+        if (be["timeout_ms"] && be["timeout_ms"].IsScalar())
+            cfg.backend.timeout_ms = be["timeout_ms"].as<int>();
+        if (be["max_retries"] && be["max_retries"].IsScalar())
+            cfg.backend.max_retries = be["max_retries"].as<int>();
+    }
+    
+    // Cache overrides
+    if (root["cache"] && root["cache"].IsMap()) {
+        auto ca = root["cache"];
+        if (ca["enabled"] && ca["enabled"].IsScalar())
+            cfg.cache.enabled = ca["enabled"].as<bool>();
+        if (ca["max_size_mb"] && ca["max_size_mb"].IsScalar())
+            cfg.cache.max_size_mb = ca["max_size_mb"].as<int>();
+        if (ca["ttl_seconds"] && ca["ttl_seconds"].IsScalar())
+            cfg.cache.ttl_seconds = ca["ttl_seconds"].as<int>();
+    }
+    
+    // Logging overrides
+    if (root["logging"] && root["logging"].IsMap()) {
+        auto lg = root["logging"];
+        if (lg["level"] && lg["level"].IsScalar())
+            cfg.logging.level = lg["level"].as<std::string>();
+    }
+}
+
 ProxyConfig loadConfig(const std::string& filepath) {
     ProxyConfig config = getDefaultConfig();
 
     try {
-        YAML::Node root = YAML::LoadFile(filepath);
-
-        // Server
-        if (root["server"] && root["server"].IsMap()) {
-            auto sv = root["server"];
-            if (sv["port"] && sv["port"].IsScalar())
-                config.server.port = sv["port"].as<int>();
-            if (sv["listen_address"] && sv["listen_address"].IsScalar())
-                config.server.listen_address = sv["listen_address"].as<std::string>();
-            if (sv["stats_logging_seconds"] && sv["stats_logging_seconds"].IsScalar())
-                config.server.stats_logging_seconds = sv["stats_logging_seconds"].as<int>();
-        }
-
-        // Backend
-        if (root["backend"] && root["backend"].IsMap()) {
-            auto be = root["backend"];
-            if (be["url"] && be["url"].IsScalar())
-                config.backend.url = be["url"].as<std::string>();
-            if (be["timeout_ms"] && be["timeout_ms"].IsScalar())
-                config.backend.timeout_ms = be["timeout_ms"].as<int>();
-            if (be["max_retries"] && be["max_retries"].IsScalar())
-                config.backend.max_retries = be["max_retries"].as<int>();
-        }
-
-        // Cache
-        if (root["cache"] && root["cache"].IsMap()) {
-            auto ca = root["cache"];
-            if (ca["enabled"] && ca["enabled"].IsScalar())
-                config.cache.enabled = ca["enabled"].as<bool>();
-            if (ca["max_size_mb"] && ca["max_size_mb"].IsScalar())
-                config.cache.max_size_mb = ca["max_size_mb"].as<int>();
-            if (ca["ttl_seconds"] && ca["ttl_seconds"].IsScalar())
-                config.cache.ttl_seconds = ca["ttl_seconds"].as<int>();
-        }
-
-        // Logging
-        if (root["logging"] && root["logging"].IsMap()) {
-            auto lg = root["logging"];
-            if (lg["level"] && lg["level"].IsScalar())
-                config.logging.level = lg["level"].as<std::string>();
-        }
-
+        applyYamlOverrides(config, filepath);
         std::cout << "[INFO] Loaded config from: " << filepath << std::endl;
     } catch(const YAML::BadFile& e) {
         std::cerr << "[WARNING] Config file not found: " << filepath 
@@ -101,9 +102,9 @@ std::shared_ptr<const ProxyConfig> ConfigManager::get() const {
 
 bool ConfigManager::reload() {
     Logger::info("Reloading config from " + m_configPath + "...");
-    ProxyConfig config;
+    ProxyConfig config = *get();
     try {
-        config = loadConfig(m_configPath);
+        applyYamlOverrides(config, m_configPath);
     } catch (...) {
         Logger::error("Config reload failed, keeping old config");
         return false;
